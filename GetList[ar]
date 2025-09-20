@@ -1,0 +1,249 @@
+import asyncio, aiohttp, os, urllib.parse, re, random, binascii, uuid, time
+from MedoSigner import Argus, Gorgon, Ladon, md5		
+
+print('ملاحضه : سوف ينحفض ملف السته في الملفات واسم الملف list.txt')
+print('')
+
+# قائمة الدول
+COUNTRIES = [
+    ("iraq", "العراق", "IQ", "🇮🇶"),
+    ("saudiarabia", "المملكة العربية السعودية", "SA", "🇸🇦"),
+    ("egypt", "مصر", "EG", "🇪🇬"),
+    ("uae", "الإمارات", "AE", "🇦🇪"),
+    ("kuwait", "الكويت", "KW", "🇰🇼"),
+    ("bahrain", "البحرين", "BH", "🇧🇭"),
+    ("oman", "عمان", "OM", "🇴🇲"),
+    ("qatar", "قطر", "QA", "🇶🇦"),
+    ("jordan", "الأردن", "JO", "🇯🇴"),
+    ("lebanon", "لبنان", "LB", "🇱🇧"),
+    ("syria", "سوريا", "SY", "🇸🇾"),
+    ("palestine", "فلسطين", "PS", "🇵🇸"),
+    ("sudan", "السودان", "SD", "🇸🇩"),
+    ("libya", "ليبيا", "LY", "🇱🇾"),
+    ("morocco", "المغرب", "MA", "🇲🇦"),
+    ("algeria", "الجزائر", "DZ", "🇩🇿"),
+    ("tunisia", "تونس", "TN", "🇹🇳"),
+    ("mauritania", "موريتانيا", "MR", "🇲🇷"),
+    ("somalia", "الصومال", "SO", "🇸🇴"),
+    ("djibouti", "جيبوتي", "DJ", "🇩🇯"),
+    ("comoros", "جزر القمر", "KM", "🇰🇲"),
+    ("yemen", "اليمن", "YE", "🇾🇪"),
+]
+
+# المتغيرات العامة
+SELECTED_COUNTRY_EN = "iraq"
+SELECTED_COUNTRY_AR = "العراق"
+SELECTED_COUNTRY_ISO = "IQ"
+SELECTED_COUNTRY_FLAG = "🇮🇶"
+
+# اختيار الدولة
+def select_country_from_list():
+    global SELECTED_COUNTRY_EN, SELECTED_COUNTRY_AR, SELECTED_COUNTRY_ISO, SELECTED_COUNTRY_FLAG
+    print("اختر الدولة من القائمة التالية بكتابة رقمها ثم اضغط Enter:\n")
+    for idx, (en, ar, iso, flag) in enumerate(COUNTRIES, start=1):
+        print(f"{idx} - {en} - {ar} {flag}")
+    while True:
+        try:
+            choice = input("\nاختار رقم الدوله من 1 الى 22 : ").strip()
+            num = int(choice)
+            if 1 <= num <= len(COUNTRIES):
+                en, ar, iso, flag = COUNTRIES[num - 1]
+                SELECTED_COUNTRY_EN = en
+                SELECTED_COUNTRY_AR = ar
+                SELECTED_COUNTRY_ISO = iso
+                SELECTED_COUNTRY_FLAG = flag
+                print(f"\nتم اختيار: {num} - {en} - {ar} {flag} (رمز البلد: {iso})\n")
+                break
+            else:
+                print(f"الرجاء اختيار رقم بين 1 و {len(COUNTRIES)}.")
+        except ValueError:
+            print("الرجاء إدخال رقم صحيح (أرقام فقط).")
+
+# المتغيرات الأساسية
+a = 0
+users = set()
+user_queue = asyncio.Queue()
+lock = asyncio.Lock()
+
+# توليد قيم عشوائية
+def Vals():
+    return {
+        "manifest_version_code": "330802",
+        "_rticket": str(round(random.uniform(1.2, 1.6) * 100000000) * -1) + "4632",
+        "app_language": "ar",
+        "app_type": "normal",
+        "iid": str(random.randint(1, 10 ** 19)),
+        "channel": "googleplay",
+        "device_type": "RMX3511",
+        "language": "ar",
+        "host_abi": "arm64-v8a",
+        "locale": "ar",
+        "resolution": "1080*2236",
+        "openudid": str(binascii.hexlify(os.urandom(8)).decode()),
+        "update_version_code": "330802",
+        "ac2": "lte",
+        "cdid": str(uuid.uuid4()),
+        "sys_region": SELECTED_COUNTRY_ISO,
+        "os_api": "33",
+        "timezone_name": "Asia/Baghdad",
+        "dpi": "360",
+        "carrier_region": SELECTED_COUNTRY_ISO,
+        "ac": "4g",
+        "device_id": str(random.randint(1, 10 ** 19)),
+        "os_version": "13",
+        "timezone_offset": "10800",
+        "version_code": "330802",
+        "app_name": "musically_go",
+        "ab_version": "33.8.2",
+        "version_name": "33.8.2",
+        "device_brand": "realme",
+        "op_region": SELECTED_COUNTRY_ISO,
+        "ssmix": "a",
+        "device_platform": "android",
+        "build_number": "33.8.2",
+        "region": SELECTED_COUNTRY_ISO,
+        "aid": "1340",
+        "ts": str(round(random.uniform(1.2, 1.6) * 100000000) * -1)
+    }, {
+        'User-Agent': 'com.zhiliaoapp.musically/2023001020 (Linux; U; Android 13; ar; RMX3511; Build/TP1A.220624.014; Cronet/TTNetVersion:06d6a583 2023-04-17 QuicVersion:d298137e 2023-02-13)'
+    }
+
+# التوقيع
+def sign(params, payload: str = None, sec_device_id: str = "", cookie: str or None = None,
+         aid: int = 1233, license_id: int = 1611921764, sdk_version_str: str = "2.3.1.i18n",
+         sdk_version: int = 2, platform: int = 19, unix: int = None):
+    x_ss_stub = md5(payload.encode('utf-8')).hexdigest() if payload is not None else None
+    if not unix:
+        unix = int(time.time())
+    return Gorgon(params, unix, payload, cookie).get_value() | {
+        "x-ladon": Ladon.encrypt(unix, license_id, aid),
+        "x-argus": Argus.get_sign(params, x_ss_stub, unix, platform=platform, aid=aid,
+                                 license_id=license_id, sec_device_id=sec_device_id,
+                                 sdk_version=sdk_version_str, sdk_version_int=sdk_version)
+    }
+
+# توليد كلمات
+def V12():
+    kew = "ابتثجحخدذرزسشصضطظعغفقكلمنهوي"
+    k = ''.join((random.choice(kew) for i in range(random.randrange(2, 9))))
+    return k
+
+# جلب المعلومات
+async def info(session, username):
+    global users
+    headers = {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Android 10; Pixel 3 Build/QKQ1.200308.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/125.0.6394.70 Mobile Safari/537.36 trill_350402 JsSdk/1.0 NetType/MOBILE Channel/googleplay AppName/trill app_version/35.3.1 ByteLocale/en ByteFullLocale/en Region/IN AppId/1180 Spark/1.5.9.1 AppVersion/35.3.1 BytedanceWebview/d8a21c6"
+    }
+    try:
+        async with session.get(f'https://www.tiktok.com/@{username}', headers=headers) as resp:
+            tikinfo = await resp.text()
+            info = str(tikinfo.split('webapp.user-detail"')[1]).split('"RecommendUserList"')[0]
+            try:
+                user_id = str(info.split('id":"')[1]).split('",')[0]
+                following = str(info.split('followingCount":')[1]).split(',"')[0]
+                country = str(info.split('region":"')[1]).split('",')[0]
+                async with lock:
+                    if country == SELECTED_COUNTRY_ISO and username not in users and int(following) >= 5000:
+                        users.add(username)
+                        await user_queue.put(user_id)
+            except:
+                pass
+    except:
+        pass
+
+# جلب المتابعين
+async def get_following(session, user_id):
+    global users, a
+    token = None
+    while True:
+        try:
+            p, h = Vals()
+            signed = sign(params=urllib.parse.urlencode(p), payload="", cookie="")
+            h.update({
+                'x-ss-req-ticket': signed['x-ss-req-ticket'],
+                'x-argus': signed["x-argus"],
+                'x-gorgon': signed["x-gorgon"],
+                'x-khronos': signed["x-khronos"],
+                'x-ladon': signed["x-ladon"]
+            })
+            base_url = f'https://api16-normal-c-alisg.tiktokv.com/lite/v2/relation/following/list/?user_id={user_id}&count=50&source_type=1&request_tag_from=h5&{urllib.parse.urlencode(p)}'
+            if token:
+                base_url += f"&page_token={urllib.parse.quote(token)}"
+            async with session.get(base_url, headers=h) as response:
+                data = await response.json()
+                for user in data.get("followings", []):
+                    reg = user.get("region")
+                    fol = user.get("follower_count")
+                    username = user.get("unique_id")
+                    async with lock:
+                        if username and reg == SELECTED_COUNTRY_ISO:
+                            if int(fol) > 0 and username not in users:
+                                a += 1
+                                users.add(username)
+                                print(f'{a} - {username} | {fol} | {reg}')
+                                with open("list.txt", "a", encoding="utf-8") as f:
+                                    f.write(username + "\n")
+                if not data.get("has_more"):
+                    break
+                token = data.get("next_page_token")
+                if not token:
+                    break
+        except Exception:
+            break
+
+# البحث
+async def search(session):
+    while True:
+        try:
+            username = V12()
+            url = "https://search16-normal-c-alisg.tiktokv.com/aweme/v1/search/user/sug/?iid=" + str(
+                random.randint(1, 10 ** 19)) + "&device_id=" + str(random.randint(1, 10 ** 19)) + "&ac=wifi&channel=googleplay&aid=1233&app_name=musical_ly&version_code=300102&version_name=30.1.2&device_platform=android&os=android&ab_version=30.1.2&ssmix=a&device_type=RMX3511&device_brand=realme&language=ar&os_api=33&os_version=13&openudid=" + str(
+                binascii.hexlify(os.urandom(8)).decode()) + "&manifest_version_code=2023001020&resolution=1080*2236&dpi=360&update_version_code=2023001020&rticket=" + str(
+                round(random.uniform(1.2, 1.6) * 100000000) * -1) + "4632" + "&current_region=IQ&app_type=normal&sys_region=IQ&mcc_mnc=41805&timezone_name=Asia%2FBaghdad&carrier_region_v2=418&residence=IQ&app_language=ar&carrier_region=IQ&ac2=wifi&uoo=0&op_region=IQ&timezone_offset=10800&build_number=30.1.2&host_abi=arm64-v8a&locale=ar&region=IQ&content_language=gu%2C&ts=" + str(
+                round(random.uniform(1.2, 1.6) * 100000000) * -1) + "&cdid=" + str(uuid.uuid4()) + ""
+            payload = {
+                'keyword': username,
+                'count': "100",
+                'source': "tt_ffp_add_friends",
+                'mention_type': "0"}
+            headers = {'Host': 'search16-normal-c-alisg.tiktokv.com',
+                       'User-Agent': "com.zhiliaoapp.musically/2023105030 (Linux; U; Android 13; ar_IQ; RMX3511; Build/TP1A.220624.014; Cronet/TTNetVersion:2fdb62f9 2023-09-06 QuicVersion:bb24d47c 2023-07-19)"}
+            headers.update(sign(url.split('?')[1], payload=urllib.parse.urlencode(payload)))
+            async with session.post(url, data=payload, headers=headers) as response:
+                data = await response.json()
+                ids = [
+                    item["extra_info"].get("sug_uniq_id")
+                    for item in data.get("sug_list", [])
+                    if "extra_info" in item
+                    and "sug_uniq_id" in item["extra_info"]
+                    and re.fullmatch(r"[A-Za-z0-9]+", item["extra_info"]["sug_uniq_id"])
+                ]
+                for user in ids:
+                    await info(session, user)
+        except Exception as e:
+            print('Error in Search:', e)
+
+# العمال
+async def worker(session):
+    while True:
+        try:
+            user_id = await user_queue.get()
+            await get_following(session, user_id)
+            user_queue.task_done()
+        except Exception:
+            pass
+
+# البرنامج الرئيسي
+async def main():
+    async with aiohttp.ClientSession() as session:
+        workers = [asyncio.create_task(worker(session)) for _ in range(30)]
+        searches = [asyncio.create_task(search(session)) for _ in range(20)]
+        await asyncio.gather(*workers, *searches)
+
+# نقطة البداية
+if __name__ == "__main__":
+    select_country_from_list()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nتم الإيقاف بواسطة المستخدم. مع السلامة.")
